@@ -1,37 +1,59 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import List
+import sqlite3
+import os
 
 app = FastAPI()
 
-# Модель користувача
+def init_db():
+    if not os.path.exists('users.db'):
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE
+            )
+        ''')
+        conn.commit()
+        conn.close()
+
 class User(BaseModel):
-    id: int
-    username: str
-    email: EmailStr
+    name: str
+    email: str
 
-# Список користувачів
-users = [
-    User(id=1, username="user1", email="user1@example.com"),
-    User(id=2, username="user2", email="user2@example.com"),
-    User(id=3, username="user3", email="user3@example.com")
-]
+@app.post('/create_user')
+def create_user(user: User):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO users (name, email) VALUES (?, ?)', (user.name, user.email))
+    conn.commit()
+    conn.close()
+    return {"message": "User created successfully!"}
 
-# Ендпоінт для отримання інформації про користувача за його id
-@app.get("/users/{user_id}", response_model=User)
-def get_user(user_id: int):
-    for user in users:
-        if user.id == user_id:
-            return user
-    raise HTTPException(status_code=404, detail="User not found")
-
-# Ендпоінт для отримання списку всіх користувачів
-@app.get("/users", response_model=List[User])
-def get_all_users():
+@app.get('/users', response_model=List[User])
+def get_users():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM users')
+    users = c.fetchall()
+    conn.close()
     return users
 
-# Ендпоінт для створення нового користувача
-@app.post("/create_user", response_model=User)
-def create_user(user: User):
-    users.append(user)
-    return user
+@app.get('/users/{user_id}', response_model=User)
+def get_user(user_id: int):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+    user = c.fetchone()
+    conn.close()
+    if user:
+        return user
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
+
+if __name__ == "__main__":
+    init_db()
+    # Запустіть додаток FastAPI за допомогою uvicorn
